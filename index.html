@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CHECKI GATE KEEPER — 営業ジャッジ・ゲート</title>
+<style>
+:root{
+  --bg:#121316;
+  --bg-raised:#17181c;
+  --surface:#1b1d21;
+  --surface-2:#232529;
+  --border:#33363c;
+  --border-strong:#4a4d54;
+  --text:#f2f1ee;
+  --text-muted:#9a9da5;
+  --text-faint:#65686f;
+  --cyan:#4fd8de;
+  --cyan-bg:rgba(79,216,222,0.10);
+  --cyan-bg-strong:rgba(79,216,222,0.18);
+  --gold:#d4af6a;
+  --gold-bg:rgba(212,175,106,0.10);
+  --gold-bg-strong:rgba(212,175,106,0.20);
+  --critical:#e5484d;
+  --critical-bg:rgba(229,72,77,0.10);
+  --critical-bg-strong:rgba(229,72,77,0.20);
+  --radius:5px;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic","Segoe UI",sans-serif;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--sans);
+  font-size:14px;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--cyan-bg-strong);color:var(--text);}
+button{font-family:inherit;cursor:pointer;}
+input,select,textarea{font-family:inherit;}
+input:focus,select:focus,textarea:focus,button:focus-visible{
+  outline:2px solid var(--cyan);
+  outline-offset:1px;
+}
+::-webkit-scrollbar{width:10px;height:10px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:5px;}
+
+#app{display:flex;height:100vh;overflow:hidden;}
+
+/* ---------- Sidebar ---------- */
+.sidebar{
+  width:272px;flex-shrink:0;
+  background:var(--bg-raised);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+}
+.brand{
+  padding:18px 18px 14px;
+  border-bottom:1px solid var(--border);
+}
+.brand-mark{
+  font-weight:800;font-size:15px;letter-spacing:0.06em;
+  color:var(--text);
+}
+.brand-mark span{color:var(--gold);}
+.brand-sub{
+  margin-top:4px;font-size:11px;color:var(--text-faint);
+  letter-spacing:0.03em;
+}
+.new-case-btn{
+  margin:14px 18px 8px;
+  background:var(--surface-2);
+  border:1px solid var(--border-strong);
+  color:var(--text);
+  border-radius:var(--radius);
+  padding:9px 12px;
+  font-size:12.5px;
+  font-weight:700;
+  letter-spacing:0.03em;
+  text-align:left;
+  transition:border-color .15s, background .15s;
+}
+.new-case-btn:hover{border-color:var(--cyan);background:var(--surface);}
+.sidebar-toolbar{display:flex;gap:8px;margin:14px 18px 8px;}
+.sidebar-toolbar .new-case-btn{margin:0;flex:1;}
+.refresh-btn{
+  background:var(--surface-2);border:1px solid var(--border-strong);color:var(--text-muted);
+  border-radius:var(--radius);width:34px;flex-shrink:0;font-size:14px;
+}
+.refresh-btn:hover{border-color:var(--cyan);color:var(--cyan);}
+.sync-indicator{font-size:10px;font-weight:700;letter-spacing:0.03em;}
+.sync-indicator.ok{color:var(--cyan);}
+.sync-indicator.error{color:var(--critical);}
+.sync-indicator.syncing{color:var(--text-faint);}
+.offline-banner{
+  margin:0 18px 10px;padding:9px 11px;border-radius:4px;
+  background:var(--gold-bg);border:1px solid var(--gold);color:var(--gold);
+  font-size:11px;line-height:1.5;
+}
+.case-list{flex:1;overflow-y:auto;padding:4px 10px 14px;}
+.case-item{
+  padding:10px 10px;
+  margin:3px 0;
+  border-radius:var(--radius);
+  border:1px solid transparent;
+  cursor:pointer;
+  transition:background .12s,border-color .12s;
+}
+.case-item:hover{background:var(--surface);}
+.case-item.active{background:var(--surface-2);border-color:var(--border-strong);}
+.case-item-name{
+  font-size:13px;font-weight:600;color:var(--text);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.case-item-meta{
+  margin-top:6px;display:flex;align-items:center;justify-content:space-between;
+}
+.case-item-score{font-family:var(--mono);font-size:11px;color:var(--text-faint);}
+
+/* ---------- Pills / badges ---------- */
+.pill{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:10.5px;font-weight:700;letter-spacing:0.04em;
+  padding:3px 8px;border-radius:100px;
+  border:1px solid transparent;white-space:nowrap;
+}
+.pill-neutral{background:var(--surface-2);color:var(--text-muted);border-color:var(--border-strong);}
+.pill-cyan-outline{background:transparent;color:var(--cyan);border-color:var(--cyan);}
+.pill-cyan{background:var(--cyan-bg-strong);color:var(--cyan);border-color:var(--cyan);}
+.pill-gold{background:var(--gold-bg-strong);color:var(--gold);border-color:var(--gold);}
+.pill-critical{background:var(--critical-bg-strong);color:var(--critical);border-color:var(--critical);}
+
+/* ---------- Main ---------- */
+.main{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden;}
+.topbar{
+  padding:16px 28px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  gap:20px;flex-wrap:wrap;
+}
+.case-title-input{
+  background:transparent;border:none;color:var(--text);
+  font-size:19px;font-weight:800;letter-spacing:0.01em;
+  padding:2px 0;border-bottom:1px solid transparent;
+  min-width:120px;
+}
+.case-title-input:hover,.case-title-input:focus{border-bottom-color:var(--border-strong);}
+.case-id{font-family:var(--mono);font-size:11px;color:var(--text-faint);margin-top:2px;}
+
+.stamp{
+  font-family:var(--mono);
+  font-weight:800;font-size:12px;letter-spacing:0.12em;
+  padding:8px 16px;
+  border:2px solid var(--critical);
+  color:var(--critical);
+  border-radius:3px;
+  transform:rotate(-3deg);
+  position:relative;
+  text-transform:uppercase;
+}
+.stamp::before{
+  content:"";position:absolute;inset:3px;border:1px solid currentColor;border-radius:2px;opacity:0.5;
+}
+.stamp.gold{border-color:var(--gold);color:var(--gold);}
+
+.tabs{display:flex;gap:2px;padding:0 28px;border-bottom:1px solid var(--border);}
+.tab{
+  padding:12px 16px 11px;
+  font-size:12.5px;font-weight:700;letter-spacing:0.03em;
+  color:var(--text-faint);
+  border-bottom:2px solid transparent;
+  display:flex;align-items:center;gap:8px;
+  background:none;border-top:none;border-left:none;border-right:none;
+}
+.tab .tnum{
+  font-family:var(--mono);font-size:10.5px;
+  width:16px;height:16px;border-radius:3px;
+  display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--border-strong);color:var(--text-faint);
+}
+.tab.active{color:var(--text);border-bottom-color:var(--cyan);}
+.tab.active .tnum{border-color:var(--cyan);color:var(--cyan);}
+.tab:disabled{opacity:0.35;cursor:not-allowed;}
+.tab:not(:disabled):hover{color:var(--text);}
+
+.panel{flex:1;overflow-y:auto;padding:26px 28px 60px;}
+.panel-inner{max-width:920px;}
+
+.card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:20px 22px;
+  margin-bottom:18px;
+}
+.card-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;}
+.section-label{
+  text-transform:uppercase;font-size:11.5px;font-weight:800;
+  letter-spacing:0.09em;color:var(--text-muted);
+}
+.section-hint{font-size:11.5px;color:var(--text-faint);}
+
+.field-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;}
+.field{display:flex;flex-direction:column;gap:6px;}
+.field.full{grid-column:1/-1;}
+.field label{font-size:12px;color:var(--text-muted);font-weight:600;}
+.field .req{color:var(--critical);}
+.field input[type=number],.field input[type=text],.field select,.field textarea{
+  background:var(--bg-raised);
+  border:1px solid var(--border-strong);
+  color:var(--text);
+  border-radius:4px;
+  padding:9px 10px;
+  font-size:13.5px;
+  font-family:var(--mono);
+}
+.field select{font-family:var(--sans);}
+.field input[type=text]{font-family:var(--sans);}
+.field textarea{font-family:var(--sans);resize:vertical;min-height:56px;}
+.field input::placeholder{color:var(--text-faint);}
+.field .optional{color:var(--text-faint);font-weight:500;}
+
+.brief-strip{display:flex;flex-wrap:wrap;gap:10px 28px;margin-bottom:18px;}
+.brief-item{min-width:160px;}
+.brief-item-label{font-size:10.5px;color:var(--text-faint);text-transform:uppercase;letter-spacing:0.06em;font-weight:700;margin-bottom:3px;}
+.brief-item-value{font-size:13px;color:var(--text);}
+.brief-item-value a{color:var(--cyan);text-decoration:none;}
+.brief-item-value a:hover{text-decoration:underline;}
+.brief-item-value.empty{color:var(--text-faint);}
+
+.toggle-row{display:flex;gap:8px;}
+.toggle-btn{
+  flex:1;padding:9px 10px;border-radius:4px;
+  border:1px solid var(--border-strong);background:var(--bg-raised);
+  color:var(--text-muted);font-size:12.5px;font-weight:700;
+  transition:all .12s;
+}
+.toggle-btn.selected-yes{border-color:var(--critical);color:var(--critical);background:var(--critical-bg);}
+.toggle-btn.selected-no{border-color:var(--cyan);color:var(--cyan);background:var(--cyan-bg);}
+
+.margin-box{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 18px;border-radius:var(--radius);
+  border:1px solid var(--border-strong);
+  background:var(--bg-raised);
+  margin-bottom:16px;
+}
+.margin-label{font-size:12px;color:var(--text-muted);font-weight:700;letter-spacing:0.03em;text-transform:uppercase;}
+.margin-value{font-family:var(--mono);font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;}
+.margin-value.pass-gold{color:var(--gold);}
+.margin-value.pass-cyan{color:var(--cyan);}
+.margin-value.fail{color:var(--critical);}
+.margin-sub{font-size:11px;color:var(--text-faint);font-family:var(--mono);}
+
+.banner{
+  display:flex;gap:10px;align-items:flex-start;
+  padding:13px 15px;border-radius:var(--radius);
+  font-size:12.5px;margin-bottom:16px;border:1px solid;
+  line-height:1.55;
+}
+.banner-critical{background:var(--critical-bg);border-color:var(--critical);color:var(--critical);}
+.banner-gold{background:var(--gold-bg);border-color:var(--gold);color:var(--gold);}
+.banner-cyan{background:var(--cyan-bg);border-color:var(--cyan);color:var(--cyan);}
+.banner ul{margin:4px 0 0;padding-left:18px;}
+
+.btn{
+  border-radius:4px;border:1px solid var(--border-strong);
+  background:var(--surface-2);color:var(--text);
+  padding:10px 18px;font-size:12.5px;font-weight:700;letter-spacing:0.03em;
+  transition:all .12s;
+}
+.btn:hover:not(:disabled){border-color:var(--text-muted);}
+.btn-primary{background:var(--cyan-bg);border-color:var(--cyan);color:var(--cyan);}
+.btn-primary:hover:not(:disabled){background:var(--cyan-bg-strong);}
+.btn-gold{background:var(--gold-bg);border-color:var(--gold);color:var(--gold);}
+.btn-gold:hover:not(:disabled){background:var(--gold-bg-strong);}
+.btn-critical{background:var(--critical-bg);border-color:var(--critical);color:var(--critical);}
+.btn-critical:hover:not(:disabled){background:var(--critical-bg-strong);}
+.btn:disabled{opacity:0.32;cursor:not-allowed;}
+.btn-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;}
+
+/* ---------- Score screen ---------- */
+.score-hero{display:flex;align-items:center;gap:28px;flex-wrap:wrap;}
+.score-total{
+  font-family:var(--mono);font-weight:800;font-size:56px;line-height:1;
+  font-variant-numeric:tabular-nums;
+}
+.score-total.gold{color:var(--gold);}
+.score-total.cyan{color:var(--cyan);}
+.score-total.critical{color:var(--critical);}
+.score-total-unit{font-size:16px;color:var(--text-faint);font-weight:600;margin-left:4px;}
+.score-verdict-text{font-size:13px;color:var(--text);max-width:520px;}
+.score-breakdown{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:20px;}
+.score-bar-item{}
+.score-bar-label{font-size:11px;color:var(--text-muted);font-weight:700;letter-spacing:0.03em;display:flex;justify-content:space-between;margin-bottom:6px;}
+.score-bar-label b{font-family:var(--mono);color:var(--text);}
+.score-bar-track{height:6px;border-radius:3px;background:var(--bg-raised);border:1px solid var(--border);overflow:hidden;}
+.score-bar-fill{height:100%;border-radius:3px;background:var(--cyan);}
+.comment-block{margin-top:8px;}
+.comment-block p{margin:0 0 8px;font-size:13px;}
+.risk-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;}
+.risk-list li{
+  padding:10px 12px;border-radius:4px;font-size:12.5px;
+  border-left:3px solid var(--border-strong);background:var(--bg-raised);
+}
+.risk-list li.critical{border-left-color:var(--critical);color:var(--text);}
+.risk-list li.warning{border-left-color:var(--gold);color:var(--text);}
+.risk-list li .risk-tag{
+  display:inline-block;font-family:var(--mono);font-size:9.5px;font-weight:800;
+  letter-spacing:0.06em;margin-right:8px;padding:1px 6px;border-radius:3px;
+}
+.risk-list li.critical .risk-tag{background:var(--critical-bg-strong);color:var(--critical);}
+.risk-list li.warning .risk-tag{background:var(--gold-bg-strong);color:var(--gold);}
+.risk-empty{font-size:12.5px;color:var(--text-faint);font-style:normal;}
+
+.draft-doc{
+  width:100%;min-height:360px;background:var(--bg-raised);
+  border:1px solid var(--border-strong);border-radius:4px;
+  color:var(--text);font-family:var(--mono);font-size:12px;line-height:1.7;
+  padding:16px;white-space:pre-wrap;resize:vertical;
+}
+
+/* ---------- Gate screen ---------- */
+.gate-lock-wrap{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:60px 20px;text-align:center;gap:14px;color:var(--text-faint);
+}
+.gate-lock-wrap .stamp{transform:rotate(-4deg);font-size:14px;padding:12px 22px;}
+.judge-comment-box{
+  width:100%;min-height:90px;background:var(--bg-raised);
+  border:1px solid var(--border-strong);border-radius:4px;color:var(--text);
+  font-family:var(--sans);font-size:13px;padding:12px;resize:vertical;
+}
+.decision-record{
+  display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:4px;
+  border:1px solid var(--border-strong);background:var(--bg-raised);
+}
+
+/* ---------- Governance footer ---------- */
+.gov-panel{
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;
+  padding:16px 18px;
+}
+.gov-actions{display:flex;gap:10px;flex-wrap:wrap;}
+.gov-note{font-size:11.5px;color:var(--text-faint);max-width:360px;}
+
+.toast{
+  position:fixed;bottom:22px;left:50%;transform:translateX(-50%);
+  background:var(--surface-2);border:1px solid var(--cyan);color:var(--cyan);
+  padding:11px 18px;border-radius:6px;font-size:12.5px;font-weight:700;
+  box-shadow:0 8px 24px rgba(0,0,0,0.4);z-index:999;
+  animation:toast-in .18s ease-out;
+}
+@keyframes toast-in{from{opacity:0;transform:translate(-50%,8px);}to{opacity:1;transform:translate(-50%,0);}}
+
+.empty-state{padding:60px 20px;text-align:center;color:var(--text-faint);}
+.footer-note{font-size:10.5px;color:var(--text-faint);text-align:center;padding:10px;border-top:1px solid var(--border);}
+
+@media (max-width:860px){
+  .sidebar{width:220px;}
+  .field-grid{grid-template-columns:1fr;}
+  .score-breakdown{grid-template-columns:1fr 1fr;}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+(function(){
+"use strict";
+var STORAGE_KEY = "checki-gate-keeper:v1";
+
+// ここに Apps Script の「ウェブアプリ」URL（.../exec）を貼り付けると、
+// 中川さんと服部会長が別々の端末を使っても案件データが共有されます。
+// 空のままだとこの端末内（localStorage）だけで完結する単独モードで動作します。
+var API_URL = "";
+var API_TOKEN = "6ad2c1ffcd6eea0125370b699b656146aa21e476";
+var syncStatus = { state:"idle", lastSyncedAt:null }; // idle | syncing | ok | error
+
+var LABELS = {
+  manualScope:{none:"なし(完全自動)",light:"軽微",moderate:"中程度",heavy:"重度(人手依存)"},
+  beforeQuant:{undef:"未数値化",partial:"部分数値化",full:"完全数値化"},
+  diff:{low:"低",medium:"中",high:"高"},
+  expansion:{low:"低",medium:"中",high:"高"},
+  status:{
+    draft:{text:"未保存",cls:"pill-neutral"},
+    scored:{text:"採点済み",cls:"pill-cyan-outline"},
+    pending:{text:"会長審査待ち",cls:"pill-cyan"},
+    approved:{text:"承認済み",cls:"pill-gold"},
+    rejected:{text:"却下",cls:"pill-critical"}
+  }
+};
+
+var uiState = { rejectingCaseId:null };
+
+function uid(){ return "C-" + Date.now().toString(36).toUpperCase() + "-" + Math.floor(Math.random()*900+100); }
+
+function defaultEntry(){
+  return {
+    companyUrl:"", decisionMakerName:"", decisionMakerTitle:"",
+    referrerName:"", referrerMemo:"", issueSummary:"", requestBackground:"",
+    revenue:null, initialCost:null, laborCost:null, toolCost:null,
+    nakagawaHours:null, monthlyOpsHours:null, aiCompletionRate:null, manualScope:"",
+    manualScopeNote:"",
+    beforeQuant:"", discountRequested:null, sepDifficulty:"",
+    disclosureAllowed:null, expansion:""
+  };
+}
+
+function newCaseObj(name){
+  return {
+    id: uid(),
+    name: name || "新規案件",
+    createdAt: new Date().toISOString(),
+    status: "draft",
+    entry: defaultEntry(),
+    draftDocOverride: "",
+    submission: null,
+    judge: null
+  };
+}
+
+function loadState(){
+  try{
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){
+      var parsed = JSON.parse(raw);
+      if(parsed && parsed.cases && parsed.cases.length) return parsed;
+    }
+  }catch(e){}
+  if(API_URL) return { cases:[], activeCaseId:null, activeTab:"entry" };
+  var c = newCaseObj("サンプル案件A");
+  return { cases:[c], activeCaseId:c.id, activeTab:"entry" };
+}
+function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+var state = loadState();
+
+function getCase(id){ return state.cases.filter(function(c){return c.id===id;})[0] || null; }
+function getActive(){ return getCase(state.activeCaseId); }
+
+/* ---------------- server sync (Google Apps Script) ---------------- */
+function apiList(){
+  return fetch(API_URL + "?action=list&token=" + encodeURIComponent(API_TOKEN))
+    .then(function(res){ return res.json(); });
+}
+function apiUpsert(caseObj){
+  return fetch(API_URL, {
+    method:"POST",
+    headers:{"Content-Type":"text/plain;charset=utf-8"},
+    body: JSON.stringify({ action:"upsert", token:API_TOKEN, case:caseObj })
+  }).then(function(res){ return res.json(); });
+}
+
+function syncCase(c){
+  if(!API_URL || !c) return;
+  syncStatus.state = "syncing"; renderSyncIndicator();
+  apiUpsert(c).then(function(resp){
+    if(resp && resp.ok){
+      syncStatus.state = "ok"; syncStatus.lastSyncedAt = new Date();
+    } else {
+      syncStatus.state = "error";
+      showToast("同期に失敗しました: " + (resp && resp.error ? resp.error : "不明なエラー"));
+    }
+    renderSyncIndicator();
+  }).catch(function(err){
+    syncStatus.state = "error";
+    renderSyncIndicator();
+    showToast("サーバーへの同期に失敗しました。ネットワークをご確認ください。");
+  });
+}
+
+function refreshFromServer(silent){
+  if(!API_URL) return;
+  syncStatus.state = "syncing"; renderSyncIndicator();
+  apiList().then(function(resp){
+    if(resp && resp.ok){
+      state.cases = resp.cases;
+      if(!getActive() && state.cases.length) state.activeCaseId = state.cases[0].id;
+      saveState();
+      syncStatus.state = "ok"; syncStatus.lastSyncedAt = new Date();
+      render();
+      if(!silent) showToast("最新の状態に更新しました。");
+    } else {
+      syncStatus.state = "error"; renderSyncIndicator();
+      if(!silent) showToast("更新に失敗しました: " + (resp && resp.error ? resp.error : "不明なエラー"));
+    }
+  }).catch(function(err){
+    syncStatus.state = "error"; renderSyncIndicator();
+    if(!silent) showToast("サーバーへの接続に失敗しました。ネットワークをご確認ください。");
+  });
+}
+
+function renderSyncIndicator(){
+  var elIndicator = document.getElementById("sync-indicator");
+  if(!elIndicator) return;
+  var label = { idle:"", syncing:"同期中…", ok:"✓ 同期済み", error:"⚠ 同期エラー" }[syncStatus.state] || "";
+  elIndicator.textContent = label;
+  elIndicator.className = "sync-indicator " + syncStatus.state;
+}
+
+/* ---------------- calculations ---------------- */
+function computeMargin(e){
+  if(e.revenue===null || e.revenue===undefined || e.revenue<=0) return null;
+  var cost = (e.initialCost||0) + (e.laborCost||0) + (e.toolCost||0);
+  return (e.revenue - cost) / e.revenue * 100;
+}
+
+function clamp(v,min,max){ return Math.max(min,Math.min(max,v)); }
+
+function requiredFieldsFilled(e){
+  return e.revenue!==null && e.nakagawaHours!==null && e.monthlyOpsHours!==null &&
+    e.aiCompletionRate!==null && e.manualScope!=="" && e.beforeQuant!=="" &&
+    e.discountRequested!==null && e.sepDifficulty!=="" && e.disclosureAllowed!==null &&
+    e.expansion!=="";
+}
+
+function validationErrors(e){
+  var errs = [];
+  var margin = computeMargin(e);
+  if(e.revenue===null || e.revenue<=0) errs.push("売上を入力してください。");
+  else if(margin===null || margin<70) errs.push("粗利率 " + (margin===null?"—":margin.toFixed(1)+"%") + "。基準値70%未満のため受理できません。");
+  if(e.nakagawaHours===null) errs.push("中川の初期稼働時間を入力してください。");
+  if(e.monthlyOpsHours===null) errs.push("運用の月間稼働時間を入力してください。");
+  if(e.aiCompletionRate===null) errs.push("AI完結率を入力してください。");
+  if(e.manualScope==="") errs.push("人の手がかかる範囲を選択してください。");
+  if(e.beforeQuant==="") errs.push("Beforeの数値化レベルを選択してください。");
+  if(e.discountRequested===null) errs.push("値引き要求の有無を選択してください。");
+  if(e.sepDifficulty==="") errs.push("共通/個社分離の難易度を選択してください。");
+  if(e.disclosureAllowed===null) errs.push("事例公開の可否を選択してください。");
+  if(e.expansion==="") errs.push("横展開の可能性を選択してください。");
+  return errs;
+}
+
+function computeScoring(e){
+  var margin = computeMargin(e);
+  var mg = margin===null ? 70 : margin;
+
+  var profitability = clamp(((mg-70)/25)*30, 0, 30);
+
+  var autoBase = (e.aiCompletionRate||0)/100*25;
+  var hours = e.monthlyOpsHours||0;
+  var hoursFactor = clamp(1-(hours/20),0,1)*10;
+  var scopeDeduct = {none:0,light:2,moderate:5,heavy:10}[e.manualScope] || 0;
+  var automation = clamp(autoBase+hoursFactor-scopeDeduct, 0, 35);
+
+  var structure = 0;
+  structure += {undef:0,partial:4,full:8}[e.beforeQuant] || 0;
+  structure += e.discountRequested ? 0 : 6;
+  structure += {low:6,medium:3,high:0}[e.sepDifficulty] || 0;
+
+  var assets = 0;
+  assets += e.disclosureAllowed ? 8 : 0;
+  assets += {low:0,medium:4,high:7}[e.expansion] || 0;
+
+  var total = Math.round(profitability+automation+structure+assets);
+  total = clamp(total,0,100);
+
+  return {
+    margin:margin, total:total,
+    profitability:Math.round(profitability), automation:Math.round(automation),
+    structure:structure, assets:assets
+  };
+}
+
+var REFERRER_BIAS_KEYWORDS = ["友人","知人","親戚","家族","身内","昔から","旧知","元同僚","飲み仲間","恩人","恩義","個人的","仲が良","幼馴染","先輩","後輩の紹介"];
+function referrerBiasMatch(e){
+  var text = (e.referrerName||"") + " " + (e.referrerMemo||"");
+  for(var i=0;i<REFERRER_BIAS_KEYWORDS.length;i++){
+    if(text.indexOf(REFERRER_BIAS_KEYWORDS[i])!==-1) return REFERRER_BIAS_KEYWORDS[i];
+  }
+  return null;
+}
+
+function riskFlags(e, s){
+  var flags = [];
+  var bias = referrerBiasMatch(e);
+  if(bias) flags.push({level:"warning",text:"紹介者情報に個人的関係を示す記述あり(「"+bias+"」)。情実バイアスに注意。"});
+  if(e.discountRequested) flags.push({level:"critical",text:"値引き要求あり。安売り体質の兆候を示す最重要リスク。"});
+  if(s.margin!==null && s.margin<75) flags.push({level:"warning",text:"粗利 "+s.margin.toFixed(1)+"%。合格ライン(70%)との乖離が小さく、値引き耐性が低い。"});
+  if(e.aiCompletionRate!==null && e.aiCompletionRate<50) flags.push({level:"critical",text:"AI完結率50%未満。運用が属人化し、中川依存から脱却できない。"});
+  else if(e.aiCompletionRate!==null && e.aiCompletionRate<80) flags.push({level:"warning",text:"AI完結率80%未満。継続的な人的介在リスクが残る。"});
+  if(e.monthlyOpsHours!==null && e.monthlyOpsHours>8) flags.push({level:"warning",text:"月間稼働 "+e.monthlyOpsHours+"時間。運用工数が肥大化する懸念。"});
+  if(e.manualScope==="heavy") flags.push({level:"critical",text:"人手依存範囲が広く、スケール不能な設計。"});
+  if(e.sepDifficulty==="high") flags.push({level:"warning",text:"共通/個社分離の難易度が高く、横展開に構造的障壁。"});
+  if(e.beforeQuant==="undef") flags.push({level:"warning",text:"Beforeが数値化されておらず、成果証明・事例化が困難。"});
+  if(e.disclosureAllowed===false) flags.push({level:"warning",text:"事例公開不可のため、営業資産として蓄積できない。"});
+  return flags;
+}
+
+function verdictText(total){
+  if(total>=80) return "総合"+total+"点。S判定。数値上は通す価値がある。ただし最終可否は会長のみが決する。";
+  if(total>=65) return "総合"+total+"点。A判定。合格水域にあるが、リスクの穴を放置したまま提案すれば、いずれ会社が代償を払う。";
+  return "総合"+total+"点。要注意水域。この状態での提出は時期尚早。リソース設計を見直せ。";
+}
+
+function profitabilityComment(s){
+  if(s.margin===null) return "粗利データ未確定。";
+  if(s.margin>=85) return "粗利 "+s.margin.toFixed(1)+"%。水準は良好。ただし油断は許されない。";
+  if(s.margin>=75) return "粗利 "+s.margin.toFixed(1)+"%。合格域。上振れの余地を引き続き検討せよ。";
+  return "粗利 "+s.margin.toFixed(1)+"%。合格ラインぎりぎり。値引き一つで即座に基準を割る危険水域。";
+}
+function automationComment(e){
+  var rate = e.aiCompletionRate;
+  if(rate===null) return "AI完結率未確定。";
+  var line;
+  if(rate>=90) line = "AI完結率"+rate+"%。ほぼ自動化されている。理想形に近い。";
+  else if(rate>=70) line = "AI完結率"+rate+"%。及第点。残り"+(100-rate)+"%の人手依存を放置するな。";
+  else line = "AI完結率"+rate+"%。自動化設計が甘い。属人化の温床となる。";
+  if(e.monthlyOpsHours!==null && e.monthlyOpsHours>8){
+    line += " 月間"+e.monthlyOpsHours+"時間の運用工数は、中川の時間を食い潰す設計になっていないか、再検証せよ。";
+  }
+  return line;
+}
+
+function fmtYen(n){ if(n===null||n===undefined) return "—"; return "¥"+Math.round(n).toLocaleString("ja-JP"); }
+function fmtPct(n){ if(n===null||n===undefined) return "—"; return n.toFixed(1)+"%"; }
+
+function generateDraftDoc(c){
+  var e = c.entry, s = computeScoring(e);
+  var flags = riskFlags(e,s);
+  var cost = (e.initialCost||0)+(e.laborCost||0)+(e.toolCost||0);
+  var profit = (e.revenue||0) - cost;
+  var lines = [];
+  lines.push("【個別提案→実装 ワンストップ設計書 素案】");
+  lines.push("案件名: " + c.name);
+  lines.push("作成日: " + new Date().toLocaleDateString("ja-JP"));
+  lines.push("");
+  lines.push("■ 0. 案件基本情報");
+  lines.push("  会社HP/URL   : " + (e.companyUrl || "—"));
+  lines.push("  決裁者        : " + (e.decisionMakerName || "—") + (e.decisionMakerTitle ? "（"+e.decisionMakerTitle+"）" : ""));
+  lines.push("  紹介者        : " + (e.referrerName || "—") + (e.referrerMemo ? " / "+e.referrerMemo : ""));
+  lines.push("  課題感        : " + (e.issueSummary || "—"));
+  lines.push("  依頼背景      : " + (e.requestBackground || "—"));
+  lines.push("");
+  lines.push("■ 1. 収益性サマリー");
+  lines.push("  売上          : " + fmtYen(e.revenue));
+  lines.push("  初期費用      : " + fmtYen(e.initialCost));
+  lines.push("  人件費        : " + fmtYen(e.laborCost));
+  lines.push("  ツール費      : " + fmtYen(e.toolCost));
+  lines.push("  粗利          : " + fmtYen(profit) + " (" + fmtPct(s.margin) + ")");
+  lines.push("");
+  lines.push("■ 2. リソース設計");
+  lines.push("  中川初期稼働  : " + (e.nakagawaHours===null?"—":e.nakagawaHours+"時間"));
+  lines.push("  運用月間稼働  : " + (e.monthlyOpsHours===null?"—":e.monthlyOpsHours+"時間/月"));
+  lines.push("  AI完結率      : " + (e.aiCompletionRate===null?"—":e.aiCompletionRate+"%"));
+  lines.push("  人手依存範囲  : " + (LABELS.manualScope[e.manualScope]||"—") + (e.manualScopeNote?" / "+e.manualScopeNote:""));
+  lines.push("");
+  lines.push("■ 3. 構造設計方針");
+  lines.push("  Before数値化  : " + (LABELS.beforeQuant[e.beforeQuant]||"—"));
+  lines.push("  値引き要求    : " + (e.discountRequested===null?"—":(e.discountRequested?"あり（要警戒）":"なし")));
+  lines.push("  分離難易度    : " + (LABELS.diff[e.sepDifficulty]||"—") + "（共通/個社）");
+  lines.push("");
+  lines.push("■ 4. 横展開・資産化方針");
+  lines.push("  事例公開      : " + (e.disclosureAllowed===null?"—":(e.disclosureAllowed?"可":"不可")));
+  lines.push("  横展開可能性  : " + (LABELS.expansion[e.expansion]||"—"));
+  lines.push("");
+  lines.push("■ 5. AI事前評価スコア");
+  lines.push("  総合          : " + s.total + " / 100");
+  lines.push("  収益性        : " + s.profitability + " / 30");
+  lines.push("  自動化の質    : " + s.automation + " / 35");
+  lines.push("  構造設計      : " + s.structure + " / 20");
+  lines.push("  営業資産      : " + s.assets + " / 15");
+  lines.push("");
+  lines.push("■ 6. リスクと対応");
+  if(flags.length===0){
+    lines.push("  検出された重大リスクなし。ただし会長判断を代替するものではない。");
+  } else {
+    flags.forEach(function(f){
+      lines.push("  [" + (f.level==="critical"?"critical":"warning") + "] " + f.text);
+    });
+  }
+  lines.push("");
+  lines.push("※ 本素案は入力データに基づく機械的採点であり、最終承認権限は服部会長に帰属する。");
+  return lines.join("\n");
+}
+
+/* ---------------- rendering ---------------- */
+function el(html){ var d=document.createElement("div"); d.innerHTML=html; return d.firstElementChild; }
+
+function render(){
+  var app = document.getElementById("app");
+  var active = getActive();
+  app.innerHTML = "";
+  app.appendChild(renderSidebar(active));
+  app.appendChild(renderMain(active));
+}
+
+function renderSidebar(active){
+  var html = '<div class="sidebar">';
+  html += '<div class="brand"><div class="brand-mark">CHECKI <span>GATE KEEPER</span></div><div class="brand-sub">服部会長ファイナルジャッジ・ガバナンス</div></div>';
+  if(!API_URL){
+    html += '<div class="offline-banner">単独モード：この端末内にのみ保存されます。他の端末と共有するには index.html の API_URL を設定してください。</div>';
+  }
+  html += '<div class="sidebar-toolbar">';
+  html += '<button class="new-case-btn" onclick="GK.newCase()">+ 新規案件を起票</button>';
+  if(API_URL){
+    html += '<button class="refresh-btn" onclick="GK.refresh()" title="最新の状態に更新">⟳</button>';
+  }
+  html += '</div>';
+  if(API_URL){
+    html += '<div style="margin:0 18px 8px;"><span id="sync-indicator" class="sync-indicator '+syncStatus.state+'">'+({idle:"",syncing:"同期中…",ok:"✓ 同期済み",error:"⚠ 同期エラー"}[syncStatus.state]||"")+'</span></div>';
+  }
+  html += '<div class="case-list">';
+  state.cases.slice().reverse().forEach(function(c){
+    var isActive = active && c.id===active.id;
+    var s = computeScoring(c.entry);
+    var st = LABELS.status[c.status];
+    html += '<div class="case-item'+(isActive?' active':'')+'" onclick="GK.selectCase(\''+c.id+'\')">';
+    html += '<div class="case-item-name">'+escapeHtml(c.name)+'</div>';
+    html += '<div class="case-item-meta"><span class="pill '+st.cls+'">'+st.text+'</span>';
+    html += '<span class="case-item-score">'+(requiredFieldsFilled(c.entry)?s.total+'pt':'--pt')+'</span></div>';
+    html += '</div>';
+  });
+  html += '</div>';
+  html += '<div class="footer-note">CHECKI Gate Keeper / ローカル保存のみ</div>';
+  html += '</div>';
+  return el(html);
+}
+
+function scoreBand(total){
+  if(total>=80) return "gold";
+  if(total>=65) return "cyan";
+  return "critical";
+}
+
+function renderMain(c){
+  var wrap = el('<div class="main"></div>');
+  if(!c){
+    wrap.appendChild(el('<div class="empty-state">案件がありません。左の「新規案件を起票」から開始してください。</div>'));
+    return wrap;
+  }
+  var entryValid = requiredFieldsFilled(c.entry) && validationErrors(c.entry).length===0;
+  var locked = c.status !== "approved";
+
+  wrap.appendChild(renderTopbar(c, locked));
+  wrap.appendChild(renderTabs(c, entryValid));
+
+  var panel = el('<div class="panel"><div class="panel-inner" id="panel-inner"></div></div>');
+  wrap.appendChild(panel);
+  var inner = panel.querySelector("#panel-inner");
+
+  if(state.activeTab==="entry") inner.appendChild(renderEntryTab(c));
+  else if(state.activeTab==="score") inner.appendChild(renderScoreTab(c, entryValid));
+  else inner.appendChild(renderGateTab(c));
+
+  return wrap;
+}
+
+function renderTopbar(c, locked){
+  var html = '<div class="topbar">';
+  html += '<div><input class="case-title-input" value="'+escapeAttr(c.name)+'" onchange="GK.renameCase(\''+c.id+'\',this.value)"/>';
+  html += '<div class="case-id">'+c.id+'</div></div>';
+  if(locked){
+    html += '<div class="stamp">提案禁止 / LOCKED</div>';
+  } else {
+    html += '<div class="stamp gold">承認済 / APPROVED</div>';
+  }
+  html += '</div>';
+  return el(html);
+}
+
+function renderTabs(c, entryValid){
+  var t = state.activeTab;
+  var html = '<div class="tabs">';
+  html += '<button class="tab'+(t==="entry"?" active":"")+'" onclick="GK.switchTab(\'entry\')"><span class="tnum">1</span>案件エントリー</button>';
+  html += '<button class="tab'+(t==="score"?" active":"")+'" '+(entryValid?"":"disabled")+' onclick="GK.switchTab(\'score\')"><span class="tnum">2</span>AI事前採点</button>';
+  html += '<button class="tab'+(t==="gate"?" active":"")+'" '+(c.submission?"":"disabled")+' onclick="GK.switchTab(\'gate\')"><span class="tnum">3</span>会長ジャッジ</button>';
+  html += '</div>';
+  return el(html);
+}
+
+function toggleBtnHtml(fieldKey, value, trueLabel, falseLabel, dangerWhenTrue){
+  var trueSel = value===true, falseSel = value===false;
+  var trueCls = dangerWhenTrue ? "selected-yes" : "selected-no";
+  var falseCls = dangerWhenTrue ? "selected-no" : "selected-yes";
+  return '<div class="toggle-row">'+
+    '<button type="button" class="toggle-btn'+(trueSel?' '+trueCls:'')+'" onclick="GK.setEntryField(\''+fieldKey+'\',true)">'+trueLabel+'</button>'+
+    '<button type="button" class="toggle-btn'+(falseSel?' '+falseCls:'')+'" onclick="GK.setEntryField(\''+fieldKey+'\',false)">'+falseLabel+'</button>'+
+  '</div>';
+}
+function selectHtml(fieldKey, value, options){
+  var html = '<select onchange="GK.setEntryField(\''+fieldKey+'\',this.value)">';
+  html += '<option value="" '+(value===""?"selected":"")+'>選択してください</option>';
+  options.forEach(function(o){
+    html += '<option value="'+o[0]+'" '+(value===o[0]?"selected":"")+'>'+o[1]+'</option>';
+  });
+  html += '</select>';
+  return html;
+}
+function numHtml(fieldKey, value, placeholder){
+  return '<input type="number" step="any" value="'+(value===null||value===undefined?"":value)+'" placeholder="'+placeholder+'" onchange="GK.setEntryField(\''+fieldKey+'\', this.value===\'\'?null:parseFloat(this.value))" oninput="GK.liveMargin()"/>';
+}
+function textHtml(fieldKey, value, placeholder){
+  return '<input type="text" value="'+escapeAttr(value||"")+'" placeholder="'+placeholder+'" onchange="GK.setEntryField(\''+fieldKey+'\', this.value)"/>';
+}
+function textareaFieldHtml(fieldKey, value, placeholder){
+  return '<textarea placeholder="'+placeholder+'" onchange="GK.setEntryField(\''+fieldKey+'\', this.value)">'+escapeHtml(value||"")+'</textarea>';
+}
+
+function briefStripCard(e){
+  var urlVal = e.companyUrl ? '<a href="'+escapeAttr(e.companyUrl)+'" target="_blank" rel="noopener">'+escapeHtml(e.companyUrl)+'</a>' : '<span class="empty">未入力</span>';
+  var dm = e.decisionMakerName ? escapeHtml(e.decisionMakerName)+(e.decisionMakerTitle?'（'+escapeHtml(e.decisionMakerTitle)+'）':'') : '<span class="empty">未入力</span>';
+  var ref = e.referrerName ? escapeHtml(e.referrerName)+(e.referrerMemo?' / '+escapeHtml(e.referrerMemo):'') : '<span class="empty">未入力</span>';
+  var card = el('<div class="card"></div>');
+  card.appendChild(el('<div class="card-head"><div class="section-label">案件概要</div></div>'));
+  card.appendChild(el(
+    '<div class="brief-strip">'+
+      '<div class="brief-item"><div class="brief-item-label">会社HP</div><div class="brief-item-value">'+urlVal+'</div></div>'+
+      '<div class="brief-item"><div class="brief-item-label">決裁者</div><div class="brief-item-value">'+dm+'</div></div>'+
+      '<div class="brief-item"><div class="brief-item-label">紹介者</div><div class="brief-item-value">'+ref+'</div></div>'+
+    '</div>'+
+    (e.issueSummary ? '<div class="brief-item" style="margin-top:2px;"><div class="brief-item-label">課題感</div><div class="brief-item-value">'+escapeHtml(e.issueSummary)+'</div></div>' : '')+
+    (e.requestBackground ? '<div class="brief-item" style="margin-top:10px;"><div class="brief-item-label">依頼背景</div><div class="brief-item-value">'+escapeHtml(e.requestBackground)+'</div></div>' : '')
+  ));
+  return card;
+}
+
+function renderEntryTab(c){
+  var e = c.entry;
+  var margin = computeMargin(e);
+  var errs = validationErrors(e);
+  var wasSaved = c.status !== "draft";
+
+  var frag = document.createElement("div");
+
+  if(c.judge && c.judge.decision==="rejected"){
+    frag.appendChild(el('<div class="banner banner-critical"><div>⛔ <b>会長により却下されました。</b><br>修正コメント: '+escapeHtml(c.judge.comment||"(コメントなし)")+'</div></div>'));
+  }
+
+  // Basic info card
+  var card0 = el('<div class="card"></div>');
+  card0.appendChild(el('<div class="card-head"><div class="section-label">案件基本情報</div><div class="section-hint">会長への共有用コンテキスト（任意項目）</div></div>'));
+  var fg0 = el('<div class="field-grid"></div>');
+  fg0.innerHTML =
+    '<div class="field full"><label>会社HP / URL <span class="optional">(任意)</span></label>'+textHtml("companyUrl", e.companyUrl, "https://example.com")+'</div>'+
+    '<div class="field"><label>決裁者の名前 <span class="optional">(任意)</span></label>'+textHtml("decisionMakerName", e.decisionMakerName, "例）山田 太郎")+'</div>'+
+    '<div class="field"><label>決裁者の肩書き <span class="optional">(任意)</span></label>'+textHtml("decisionMakerTitle", e.decisionMakerTitle, "例）代表取締役")+'</div>'+
+    '<div class="field"><label>紹介者 <span class="optional">(任意)</span></label>'+textHtml("referrerName", e.referrerName, "紹介者の名前")+'</div>'+
+    '<div class="field"><label>紹介者メモ <span class="optional">(任意・関係性など)</span></label>'+textHtml("referrerMemo", e.referrerMemo, "例）既存顧客からの紹介 / 友人経由 など")+'</div>'+
+    '<div class="field full"><label>大まかな課題感 <span class="optional">(任意)</span></label>'+textareaFieldHtml("issueSummary", e.issueSummary, "先方が抱えている課題として見えているもの")+'</div>'+
+    '<div class="field full"><label>依頼した背景 <span class="optional">(任意)</span></label>'+textareaFieldHtml("requestBackground", e.requestBackground, "なぜ今回このお話に至ったか")+'</div>';
+  card0.appendChild(fg0);
+  frag.appendChild(card0);
+
+  // Profitability card
+  var card1 = el('<div class="card"></div>');
+  card1.appendChild(el('<div class="card-head"><div class="section-label">収益性</div><div class="section-hint">粗利率70%未満は受理不可</div></div>'));
+  var marginCls = margin===null ? "" : (margin<70?"fail":(margin>=80?"pass-gold":"pass-cyan"));
+  card1.appendChild(el(
+    '<div class="margin-box" id="margin-box">'+
+      '<div><div class="margin-label">粗利率（リアルタイム計算）</div>'+
+      '<div class="margin-sub" id="margin-sub">売上 − (初期費用+人件費+ツール費) ÷ 売上</div></div>'+
+      '<div class="margin-value '+marginCls+'" id="margin-value">'+(margin===null?"—":margin.toFixed(1)+"%")+'</div>'+
+    '</div>'
+  ));
+  var fg1 = el('<div class="field-grid"></div>');
+  fg1.innerHTML =
+    '<div class="field"><label>売上 <span class="req">*</span></label>'+numHtml("revenue", e.revenue, "円")+'</div>'+
+    '<div class="field"><label>初期費用</label>'+numHtml("initialCost", e.initialCost, "円")+'</div>'+
+    '<div class="field"><label>人件費</label>'+numHtml("laborCost", e.laborCost, "円")+'</div>'+
+    '<div class="field"><label>ツール費</label>'+numHtml("toolCost", e.toolCost, "円")+'</div>';
+  card1.appendChild(fg1);
+  frag.appendChild(card1);
+
+  // Resources card
+  var card2 = el('<div class="card"></div>');
+  card2.appendChild(el('<div class="card-head"><div class="section-label">リソース</div></div>'));
+  var fg2 = el('<div class="field-grid"></div>');
+  fg2.innerHTML =
+    '<div class="field"><label>中川の初期稼働時間 <span class="req">*</span></label>'+numHtml("nakagawaHours", e.nakagawaHours, "時間")+'</div>'+
+    '<div class="field"><label>運用の月間稼働時間 <span class="req">*</span></label>'+numHtml("monthlyOpsHours", e.monthlyOpsHours, "時間/月")+'</div>'+
+    '<div class="field"><label>AI完結率 <span class="req">*</span></label>'+numHtml("aiCompletionRate", e.aiCompletionRate, "0-100 (%)")+'</div>'+
+    '<div class="field"><label>人の手がかかる範囲 <span class="req">*</span></label>'+selectHtml("manualScope", e.manualScope, [["none",LABELS.manualScope.none],["light",LABELS.manualScope.light],["moderate",LABELS.manualScope.moderate],["heavy",LABELS.manualScope.heavy]])+'</div>'+
+    '<div class="field full"><label>人の手がかかる範囲・補足</label><textarea onchange="GK.setEntryField(\'manualScopeNote\', this.value)">'+escapeHtml(e.manualScopeNote||"")+'</textarea></div>';
+  card2.appendChild(fg2);
+  frag.appendChild(card2);
+
+  // Structure card
+  var card3 = el('<div class="card"></div>');
+  card3.appendChild(el('<div class="card-head"><div class="section-label">構造設計</div></div>'));
+  var fg3 = el('<div class="field-grid"></div>');
+  fg3.innerHTML =
+    '<div class="field"><label>Beforeの数値化レベル <span class="req">*</span></label>'+selectHtml("beforeQuant", e.beforeQuant, [["undef",LABELS.beforeQuant.undef],["partial",LABELS.beforeQuant.partial],["full",LABELS.beforeQuant.full]])+'</div>'+
+    '<div class="field"><label>共通/個社分離の難易度 <span class="req">*</span></label>'+selectHtml("sepDifficulty", e.sepDifficulty, [["low",LABELS.diff.low],["medium",LABELS.diff.medium],["high",LABELS.diff.high]])+'</div>'+
+    '<div class="field full"><label>値引き要求の有無 <span class="req">*</span></label>'+toggleBtnHtml("discountRequested", e.discountRequested, "あり", "なし", true)+'</div>';
+  card3.appendChild(fg3);
+  frag.appendChild(card3);
+
+  // Assets card
+  var card4 = el('<div class="card"></div>');
+  card4.appendChild(el('<div class="card-head"><div class="section-label">営業資産</div></div>'));
+  var fg4 = el('<div class="field-grid"></div>');
+  fg4.innerHTML =
+    '<div class="field"><label>横展開の可能性 <span class="req">*</span></label>'+selectHtml("expansion", e.expansion, [["low",LABELS.expansion.low],["medium",LABELS.expansion.medium],["high",LABELS.expansion.high]])+'</div>'+
+    '<div class="field"><label>事例公開の可否 <span class="req">*</span></label>'+toggleBtnHtml("disclosureAllowed", e.disclosureAllowed, "可", "不可", false)+'</div>';
+  card4.appendChild(fg4);
+  frag.appendChild(card4);
+
+  // Save
+  var saveCard = el('<div class="card"></div>');
+  if(errs.length>0){
+    var ul = '<ul>'+errs.map(function(x){return '<li>'+escapeHtml(x)+'</li>';}).join('')+'</ul>';
+    saveCard.appendChild(el('<div class="banner banner-critical"><div><b>受理できません。</b>'+ul+'</div></div>'));
+  } else if(wasSaved) {
+    saveCard.appendChild(el('<div class="banner banner-cyan">入力内容は基準を満たしています。AI事前採点へ進めます。</div>'));
+  }
+  var btnRow = el('<div class="btn-row"></div>');
+  var saveBtn = el('<button class="btn btn-primary">保存してAI採点へ進む</button>');
+  saveBtn.disabled = errs.length>0;
+  saveBtn.onclick = function(){ GK.saveEntry(c.id); };
+  btnRow.appendChild(saveBtn);
+  saveCard.appendChild(btnRow);
+  frag.appendChild(saveCard);
+
+  return frag;
+}
+
+function renderScoreTab(c, entryValid){
+  var frag = document.createElement("div");
+  if(!entryValid){
+    frag.appendChild(el('<div class="empty-state">案件エントリーを先に完了させてください。</div>'));
+    return frag;
+  }
+  var e = c.entry;
+  var s = computeScoring(e);
+  var flags = riskFlags(e,s);
+  var band = scoreBand(s.total);
+
+  frag.appendChild(briefStripCard(e));
+
+  var hero = el('<div class="card"></div>');
+  hero.appendChild(el(
+    '<div class="card-head"><div class="section-label">AIハット会長 事前採点</div><div class="section-hint">冷徹レビュー・機械採点</div></div>'
+  ));
+  var heroInner = el('<div class="score-hero"></div>');
+  heroInner.appendChild(el('<div class="score-total '+band+'">'+s.total+'<span class="score-total-unit">/ 100</span></div>'));
+  heroInner.appendChild(el('<div class="score-verdict-text">'+escapeHtml(verdictText(s.total))+'</div>'));
+  hero.appendChild(heroInner);
+
+  var bd = el('<div class="score-breakdown"></div>');
+  var items = [
+    ["収益性", s.profitability, 30],
+    ["自動化の質", s.automation, 35],
+    ["構造設計", s.structure, 20],
+    ["営業資産", s.assets, 15]
+  ];
+  items.forEach(function(it){
+    var pct = (it[1]/it[2])*100;
+    bd.appendChild(el(
+      '<div class="score-bar-item"><div class="score-bar-label"><span>'+it[0]+'</span><b>'+it[1]+'/'+it[2]+'</b></div>'+
+      '<div class="score-bar-track"><div class="score-bar-fill" style="width:'+pct+'%"></div></div></div>'
+    ));
+  });
+  hero.appendChild(bd);
+  frag.appendChild(hero);
+
+  var reviewCard = el('<div class="card"></div>');
+  reviewCard.appendChild(el('<div class="card-head"><div class="section-label">レビューコメント</div></div>'));
+  reviewCard.appendChild(el('<div class="comment-block"><p><b>収益性:</b> '+escapeHtml(profitabilityComment(s))+'</p><p><b>自動化の質:</b> '+escapeHtml(automationComment(e))+'</p></div>'));
+  var riskList = el('<ul class="risk-list"></ul>');
+  if(flags.length===0){
+    riskList.appendChild(el('<li class="risk-empty">検出された重大リスクなし。ただし油断は禁物。</li>'));
+  } else {
+    flags.forEach(function(f){
+      riskList.appendChild(el('<li class="'+f.level+'"><span class="risk-tag">'+(f.level==="critical"?"CRITICAL":"WARNING")+'</span>'+escapeHtml(f.text)+'</li>'));
+    });
+  }
+  reviewCard.appendChild(el('<div class="section-label" style="margin:14px 0 8px;">リスクの穴</div>'));
+  reviewCard.appendChild(riskList);
+  frag.appendChild(reviewCard);
+
+  var draftCard = el('<div class="card"></div>');
+  draftCard.appendChild(el('<div class="card-head"><div class="section-label">設計書素案（自動生成・編集可）</div></div>'));
+  var draftText = c.draftDocOverride || generateDraftDoc(c);
+  var ta = el('<textarea class="draft-doc" id="draft-doc-ta"></textarea>');
+  ta.value = draftText;
+  ta.onchange = function(){ GK.setDraftOverride(c.id, ta.value); };
+  draftCard.appendChild(ta);
+  var draftBtns = el('<div class="btn-row"></div>');
+  var copyBtn = el('<button class="btn">コピー</button>');
+  copyBtn.onclick = function(){
+    ta.select();
+    navigator.clipboard && navigator.clipboard.writeText(ta.value).then(function(){ GK.toast("設計書をコピーしました"); });
+  };
+  var resetBtn = el('<button class="btn">自動生成に戻す</button>');
+  resetBtn.onclick = function(){ GK.setDraftOverride(c.id, ""); GK.render(); };
+  draftBtns.appendChild(copyBtn);
+  draftBtns.appendChild(resetBtn);
+  draftCard.appendChild(draftBtns);
+  frag.appendChild(draftCard);
+
+  var submitCard = el('<div class="card"></div>');
+  if(c.status==="pending"){
+    submitCard.appendChild(el('<div class="banner banner-cyan">既に会長へ提出済みです。ジャッジ待ちの状態です。</div>'));
+  } else if(c.status==="approved"){
+    submitCard.appendChild(el('<div class="banner banner-gold">この案件は承認済みです。内容を変更すると再度ロックされます。</div>'));
+  }
+  var subBtnRow = el('<div class="btn-row"></div>');
+  var subBtn = el('<button class="btn btn-gold">この内容で服部会長へ提出</button>');
+  subBtn.onclick = function(){ GK.submitToChairman(c.id); };
+  subBtnRow.appendChild(subBtn);
+  submitCard.appendChild(subBtnRow);
+  frag.appendChild(submitCard);
+
+  return frag;
+}
+
+function renderGateTab(c){
+  var frag = document.createElement("div");
+  if(!c.submission){
+    frag.appendChild(el(
+      '<div class="card"><div class="gate-lock-wrap">'+
+      '<div class="stamp">提案禁止 / LOCKED</div>'+
+      '<div>この案件はまだ服部会長へ提出されていません。</div>'+
+      '</div></div>'
+    ));
+    return frag;
+  }
+  var sub = c.submission;
+  var s = sub.scoring;
+  var band = scoreBand(s.total);
+
+  frag.appendChild(briefStripCard(c.entry));
+
+  var summary = el('<div class="card"></div>');
+  summary.appendChild(el('<div class="card-head"><div class="section-label">提出内容サマリー</div><div class="section-hint">提出日時: '+new Date(sub.submittedAt).toLocaleString("ja-JP")+'</div></div>'));
+  var heroInner = el('<div class="score-hero"></div>');
+  heroInner.appendChild(el('<div class="score-total '+band+'">'+s.total+'<span class="score-total-unit">/ 100</span></div>'));
+  heroInner.appendChild(el('<div class="score-verdict-text">'+escapeHtml(verdictText(s.total))+'</div>'));
+  summary.appendChild(heroInner);
+  frag.appendChild(summary);
+
+  var docCard = el('<div class="card"></div>');
+  docCard.appendChild(el('<div class="card-head"><div class="section-label">設計書素案（提出時点で確定）</div></div>'));
+  var ta = el('<textarea class="draft-doc" readonly></textarea>');
+  ta.value = sub.draftDoc;
+  docCard.appendChild(ta);
+  frag.appendChild(docCard);
+
+  var gateCard = el('<div class="card"></div>');
+  gateCard.appendChild(el('<div class="card-head"><div class="section-label">服部会長 最終ジャッジ</div></div>'));
+
+  if(c.judge && c.judge.decision){
+    var isApproved = c.judge.decision==="approved";
+    gateCard.appendChild(el(
+      '<div class="decision-record"><span class="pill '+(isApproved?"pill-gold":"pill-critical")+'">'+(isApproved?"承認":"却下")+'</span>'+
+      '<div style="flex:1;"><div style="font-size:12px;color:var(--text-muted);">'+new Date(c.judge.decidedAt).toLocaleString("ja-JP")+'</div>'+
+      (c.judge.comment ? '<div style="margin-top:4px;">'+escapeHtml(c.judge.comment)+'</div>' : '')+
+      '</div></div>'
+    ));
+  } else {
+    var actionsWrap = document.createElement("div");
+    var btnRow = el('<div class="btn-row"></div>');
+    var approveBtn = el('<button class="btn btn-gold">承認する</button>');
+    approveBtn.onclick = function(){ GK.decide(c.id, "approved", ""); };
+    var rejectBtn = el('<button class="btn btn-critical">却下する</button>');
+    rejectBtn.onclick = function(){ uiState.rejectingCaseId = c.id; render(); };
+    btnRow.appendChild(approveBtn);
+    btnRow.appendChild(rejectBtn);
+    actionsWrap.appendChild(btnRow);
+
+    if(uiState.rejectingCaseId===c.id){
+      var rejectBox = el('<div style="margin-top:14px;"></div>');
+      rejectBox.appendChild(el('<label style="font-size:12px;color:var(--text-muted);font-weight:600;">修正コメント（必須）</label>'));
+      var textarea = el('<textarea class="judge-comment-box" style="margin-top:6px;" placeholder="却下理由・修正すべき点を明記"></textarea>');
+      rejectBox.appendChild(textarea);
+      var confirmRow = el('<div class="btn-row"></div>');
+      var confirmBtn = el('<button class="btn btn-critical">却下を確定</button>');
+      confirmBtn.onclick = function(){
+        var val = textarea.value.trim();
+        if(!val){ GK.toast("修正コメントを入力してください"); return; }
+        GK.decide(c.id, "rejected", val);
+      };
+      var cancelBtn = el('<button class="btn">キャンセル</button>');
+      cancelBtn.onclick = function(){ uiState.rejectingCaseId = null; render(); };
+      confirmRow.appendChild(confirmBtn);
+      confirmRow.appendChild(cancelBtn);
+      rejectBox.appendChild(confirmRow);
+      actionsWrap.appendChild(rejectBox);
+    }
+    gateCard.appendChild(actionsWrap);
+  }
+  frag.appendChild(gateCard);
+
+  // Governance lock panel
+  var govCard = el('<div class="card"></div>');
+  govCard.appendChild(el('<div class="card-head"><div class="section-label">ガバナンス・アクション</div></div>'));
+  var govInner = el('<div class="gov-panel"></div>');
+  var locked = c.status !== "approved";
+  govInner.appendChild(el('<div class="gov-note">'+(locked?'会長承認が完了するまで、お友達クーポン発行・顧客向け提案書出力は物理的にロックされます。':'承認済みのため、以下のアクションが解放されています。')+'</div>'));
+  var govBtns = el('<div class="gov-actions"></div>');
+  var couponBtn = el('<button class="btn'+(locked?'':' btn-gold')+'">お友達クーポン発行</button>');
+  couponBtn.disabled = locked;
+  couponBtn.onclick = function(){ GK.toast("クーポンコード発行: CHECKI-"+c.id.slice(-6)); };
+  var proposalBtn = el('<button class="btn'+(locked?'':' btn-gold')+'">顧客向け提案書を出力</button>');
+  proposalBtn.disabled = locked;
+  proposalBtn.onclick = function(){ GK.toast("提案書を出力しました"); };
+  govBtns.appendChild(couponBtn);
+  govBtns.appendChild(proposalBtn);
+  govInner.appendChild(govBtns);
+  govCard.appendChild(govInner);
+  frag.appendChild(govCard);
+
+  return frag;
+}
+
+/* ---------------- helpers ---------------- */
+function escapeHtml(s){
+  return String(s==null?"":s).replace(/[&<>"']/g, function(m){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m];
+  });
+}
+function escapeAttr(s){ return escapeHtml(s); }
+
+function showToast(msg){
+  var old = document.querySelector(".toast");
+  if(old) old.remove();
+  var t = el('<div class="toast">'+escapeHtml(msg)+'</div>');
+  document.body.appendChild(t);
+  setTimeout(function(){ t.remove(); }, 2400);
+}
+
+/* ---------------- actions ---------------- */
+window.GK = {
+  render: render,
+  toast: showToast,
+  refresh:function(){ refreshFromServer(false); },
+  newCase:function(){
+    var c = newCaseObj("新規案件 " + (state.cases.length+1));
+    state.cases.push(c);
+    state.activeCaseId = c.id;
+    state.activeTab = "entry";
+    saveState(); render();
+    syncCase(c);
+  },
+  selectCase:function(id){
+    state.activeCaseId = id;
+    state.activeTab = "entry";
+    uiState.rejectingCaseId = null;
+    saveState(); render();
+  },
+  renameCase:function(id, name){
+    var c = getCase(id); if(!c) return;
+    c.name = name || "無題案件";
+    saveState(); render();
+    syncCase(c);
+  },
+  switchTab:function(tab){
+    state.activeTab = tab;
+    saveState(); render();
+  },
+  setEntryField:function(field, value){
+    var c = getActive(); if(!c) return;
+    c.entry[field] = value;
+    var wasLocked = (c.status==="approved" || c.status==="pending");
+    if(wasLocked){
+      c.status = "draft";
+      c.judge = null;
+      c.submission = null;
+    }
+    saveState();
+    render();
+    if(wasLocked) showToast("内容を変更したためロック状態にリセットされました。再度保存・提出・承認が必要です。");
+    syncCase(c);
+  },
+  liveMargin:function(){
+    var c = getActive(); if(!c) return;
+    var box = document.getElementById("margin-box");
+    if(!box) return;
+    var margin = computeMargin(c.entry);
+    var valEl = document.getElementById("margin-value");
+    if(valEl) {
+      valEl.textContent = margin===null ? "—" : margin.toFixed(1)+"%";
+      valEl.className = "margin-value" + (margin===null?"":(margin<70?" fail":(margin>=80?" pass-gold":" pass-cyan")));
+    }
+  },
+  saveEntry:function(id){
+    var c = getCase(id); if(!c) return;
+    var errs = validationErrors(c.entry);
+    if(errs.length>0){ render(); return; }
+    var wasLockedState = (c.status==="approved" || c.status==="pending" || c.status==="rejected");
+    c.status = "scored";
+    if(wasLockedState){
+      c.judge = null;
+      c.submission = null;
+    }
+    saveState(); render();
+    showToast(wasLockedState ? "内容を保存しました。ロック状態がリセットされ、再判定が必要です。" : "内容を保存しました。AI事前採点へ進めます。");
+    syncCase(c);
+  },
+  setDraftOverride:function(id, text){
+    var c = getCase(id); if(!c) return;
+    var auto = generateDraftDoc(c);
+    c.draftDocOverride = (text===auto) ? "" : text;
+    saveState();
+    syncCase(c);
+  },
+  submitToChairman:function(id){
+    var c = getCase(id); if(!c) return;
+    var s = computeScoring(c.entry);
+    var draft = c.draftDocOverride || generateDraftDoc(c);
+    c.submission = { scoring:s, draftDoc:draft, submittedAt:new Date().toISOString() };
+    c.status = "pending";
+    c.judge = null;
+    saveState(); state.activeTab="gate"; render();
+    showToast("服部会長へ提出しました。");
+    syncCase(c);
+  },
+  decide:function(id, decision, comment){
+    var c = getCase(id); if(!c) return;
+    c.judge = { decision:decision, comment:comment, decidedAt:new Date().toISOString() };
+    c.status = decision;
+    uiState.rejectingCaseId = null;
+    saveState(); render();
+    showToast(decision==="approved" ? "承認されました。ロック解除。" : "却下しました。修正差し戻し。");
+    syncCase(c);
+  }
+};
+
+render();
+if(API_URL){
+  refreshFromServer(true);
+  document.addEventListener("visibilitychange", function(){
+    if(document.visibilityState === "visible") refreshFromServer(true);
+  });
+}
+})();
+</script>
+</body>
+</html>
