@@ -361,9 +361,23 @@ input:focus,select:focus,textarea:focus,button:focus-visible{
 .empty-state{padding:60px 20px;text-align:center;color:var(--text-faint);}
 .footer-note{font-size:10.5px;color:var(--text-faint);text-align:center;padding:10px;border-top:1px solid var(--border);}
 
-/* ---------- AI opinion ---------- */
-.ai-opinion-text{white-space:pre-wrap;font-size:13px;line-height:1.75;color:var(--text);}
-.ai-opinion-meta{font-size:10.5px;color:var(--text-faint);margin-top:10px;font-family:var(--mono);}
+/* ---------- Knowledge reference panel ---------- */
+.knowledge-ref-item{
+  border:1px solid var(--border-strong);border-radius:4px;background:var(--bg-raised);
+  margin-bottom:8px;overflow:hidden;
+}
+.knowledge-ref-item summary{
+  padding:10px 12px;cursor:pointer;font-size:12.5px;font-weight:700;color:var(--text);
+  display:flex;align-items:center;justify-content:space-between;gap:10px;list-style:none;
+}
+.knowledge-ref-item summary::-webkit-details-marker{display:none;}
+.knowledge-ref-item summary::after{content:"展開 ▾";color:var(--text-faint);font-weight:600;font-size:11px;flex-shrink:0;}
+.knowledge-ref-item[open] summary::after{content:"閉じる ▴";}
+.knowledge-ref-date{font-size:10.5px;color:var(--text-faint);font-weight:500;font-family:var(--mono);margin-right:auto;margin-left:10px;}
+.knowledge-ref-body{
+  padding:4px 12px 14px;white-space:pre-wrap;font-size:12.5px;line-height:1.7;color:var(--text-muted);
+  border-top:1px solid var(--border);
+}
 
 /* ---------- Knowledge modal ---------- */
 .modal-overlay{
@@ -431,7 +445,7 @@ var LABELS = {
   }
 };
 
-var uiState = { rejectingCaseId:null, knowledgeModalOpen:false, aiOpinionLoading:null };
+var uiState = { rejectingCaseId:null, knowledgeModalOpen:false };
 var knowledgeState = { items:[], loading:false, uploading:false };
 
 function uid(){ return "C-" + Date.now().toString(36).toUpperCase() + "-" + Math.floor(Math.random()*900+100); }
@@ -457,8 +471,7 @@ function newCaseObj(name){
     entry: defaultEntry(),
     draftDocOverride: "",
     submission: null,
-    judge: null,
-    aiOpinion: null
+    judge: null
   };
 }
 
@@ -509,16 +522,6 @@ function apiDeleteKnowledge(id){
     method:"POST",
     headers:{"Content-Type":"text/plain;charset=utf-8"},
     body: JSON.stringify({ action:"deleteKnowledge", token:API_TOKEN, id:id })
-  }).then(function(res){ return res.json(); });
-}
-function apiAiJudge(payload){
-  var body = { action:"aiJudge", token:API_TOKEN,
-    caseName:payload.caseName, entry:payload.entry, scoring:payload.scoring,
-    riskFlags:payload.riskFlags, draftDoc:payload.draftDoc };
-  return fetch(API_URL, {
-    method:"POST",
-    headers:{"Content-Type":"text/plain;charset=utf-8"},
-    body: JSON.stringify(body)
   }).then(function(res){ return res.json(); });
 }
 
@@ -769,7 +772,7 @@ function renderKnowledgeModal(){
   ));
   panel.appendChild(el(
     '<div class="modal-desc">会長との壁打ちで固まった判断基準・考え方をmdファイルでアップロードしておくと、'+
-    '各案件の「AI事前採点」タブでAIハット会長の一次意見を生成する際に、これらの内容を踏まえて回答するようになります。'+
+    '各案件の「AI事前採点」タブに参照資料としてそのまま表示されます。'+
     '中川さん・服部会長のどちらの端末からも共有されます。</div>'
   ));
 
@@ -1091,26 +1094,26 @@ function renderScoreTab(c, entryValid){
   reviewCard.appendChild(riskList);
   frag.appendChild(reviewCard);
 
-  var aiCard = el('<div class="card"></div>');
-  aiCard.appendChild(el('<div class="card-head"><div class="section-label">AIハット会長 一次意見</div><div class="section-hint">判断基準ナレッジを参照して生成</div></div>'));
+  var knowledgeCard = el('<div class="card"></div>');
+  knowledgeCard.appendChild(el('<div class="card-head"><div class="section-label">判断基準ナレッジ（参照）</div><div class="section-hint">会長との壁打ち内容をそのまま表示</div></div>'));
   if(!API_URL){
-    aiCard.appendChild(el('<div class="banner banner-gold">この機能はサーバー同期（API_URL）設定後に使えます。</div>'));
+    knowledgeCard.appendChild(el('<div class="banner banner-gold">この機能はサーバー同期（API_URL）設定後に使えます。</div>'));
+  } else if(knowledgeState.loading){
+    knowledgeCard.appendChild(el('<div class="section-hint">読み込み中…</div>'));
+  } else if(knowledgeState.items.length===0){
+    knowledgeCard.appendChild(el('<div class="section-hint">まだ何も登録されていません。「📚 判断基準ナレッジ」からmdファイルをアップロードすると、ここに参照資料として表示されます。</div>'));
   } else {
-    var aiLoading = uiState.aiOpinionLoading === c.id;
-    if(c.aiOpinion){
-      aiCard.appendChild(el('<div class="ai-opinion-text">'+escapeHtml(c.aiOpinion.text)+'</div>'));
-      aiCard.appendChild(el('<div class="ai-opinion-meta">生成日時: '+new Date(c.aiOpinion.generatedAt).toLocaleString("ja-JP")+' / 参照ナレッジ '+(c.aiOpinion.knowledgeCount||0)+'件</div>'));
-    } else {
-      aiCard.appendChild(el('<div class="section-hint" style="margin-bottom:10px;">まだ生成されていません。「📚 判断基準ナレッジ」に登録したmdを踏まえた一次意見を生成できます。</div>'));
-    }
-    var aiBtnRow = el('<div class="btn-row" style="margin-top:'+(c.aiOpinion?"12px":"0")+';"></div>');
-    var aiBtn = el('<button class="btn btn-primary">'+(aiLoading?"生成中…":(c.aiOpinion?"🔄 再生成する":"🧠 AI意見を生成する"))+'</button>');
-    aiBtn.disabled = aiLoading;
-    aiBtn.onclick = function(){ GK.generateAiOpinion(c.id); };
-    aiBtnRow.appendChild(aiBtn);
-    aiCard.appendChild(aiBtnRow);
+    knowledgeState.items.forEach(function(k){
+      var item = el(
+        '<details class="knowledge-ref-item">'+
+          '<summary>'+escapeHtml(k.filename)+'<span class="knowledge-ref-date">'+new Date(k.uploadedAt).toLocaleDateString("ja-JP")+'</span></summary>'+
+          '<div class="knowledge-ref-body">'+escapeHtml(k.content)+'</div>'+
+        '</details>'
+      );
+      knowledgeCard.appendChild(item);
+    });
   }
-  frag.appendChild(aiCard);
+  frag.appendChild(knowledgeCard);
 
   var draftCard = el('<div class="card"></div>');
   draftCard.appendChild(el('<div class="card-head"><div class="section-label">設計書素案（自動生成・編集可）</div></div>'));
@@ -1300,7 +1303,6 @@ window.GK = {
       c.status = "draft";
       c.judge = null;
       c.submission = null;
-      c.aiOpinion = null;
     }
     saveState();
     render();
@@ -1327,7 +1329,6 @@ window.GK = {
     if(wasLockedState){
       c.judge = null;
       c.submission = null;
-      c.aiOpinion = null;
     }
     saveState(); render();
     showToast(wasLockedState ? "内容を保存しました。ロック状態がリセットされ、再判定が必要です。" : "内容を保存しました。AI事前採点へ進めます。");
@@ -1415,36 +1416,13 @@ window.GK = {
       if(resp && resp.ok){ knowledgeState.items = resp.items; render(); showToast("削除しました。"); }
       else { showToast("削除に失敗しました: "+(resp&&resp.error?resp.error:"不明なエラー")); }
     });
-  },
-  generateAiOpinion:function(id){
-    var c = getCase(id); if(!c) return;
-    if(!API_URL){ showToast("この機能はサーバー同期設定後に使えます。"); return; }
-    var e = c.entry, s = computeScoring(e), flags = riskFlags(e,s);
-    var draft = c.draftDocOverride || generateDraftDoc(c);
-    uiState.aiOpinionLoading = id;
-    render();
-    apiAiJudge({ caseName:c.name, entry:e, scoring:s, riskFlags:flags, draftDoc:draft }).then(function(resp){
-      uiState.aiOpinionLoading = null;
-      if(resp && resp.ok){
-        c.aiOpinion = { text:resp.aiComment, generatedAt:resp.generatedAt, knowledgeCount:resp.knowledgeCount };
-        saveState(); render();
-        syncCase(c);
-        showToast("AI意見を生成しました。");
-      } else {
-        render();
-        showToast("AI意見の生成に失敗しました: " + (resp && resp.error ? resp.error : "不明なエラー"));
-      }
-    }).catch(function(){
-      uiState.aiOpinionLoading = null;
-      render();
-      showToast("AI意見の生成でエラーが発生しました。");
-    });
   }
 };
 
 render();
 if(API_URL){
   refreshFromServer(true);
+  GK.refreshKnowledge();
   document.addEventListener("visibilitychange", function(){
     if(document.visibilityState === "visible") refreshFromServer(true);
   });
