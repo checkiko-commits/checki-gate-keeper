@@ -27,7 +27,12 @@
 const API_TOKEN = '6ad2c1ffcd6eea0125370b699b656146aa21e476';
 
 const SHEET_NAME = '案件データ';
-const HEADERS = ['id', 'name', 'createdAt', 'status', 'entryJson', 'draftDocOverride', 'submissionJson', 'judgeJson', 'updatedAt'];
+const HEADERS = ['id', 'name', 'createdAt', 'status', 'entryJson', 'draftDocOverride', 'submissionJson', 'judgeJson', 'updatedAt', 'aiOpinionJson'];
+
+const KNOWLEDGE_SHEET_NAME = 'ナレッジ';
+const KNOWLEDGE_HEADERS = ['id', 'filename', 'content', 'uploadedAt'];
+
+const CLAUDE_MODEL = 'claude-sonnet-5';
 
 // 通知先メールアドレスと、通知メールに載せる公開URL
 const CHAIRMAN_EMAIL = 'brands.masaki@gmail.com';
@@ -42,6 +47,9 @@ function onOpen() {
     .createMenu('🔒 Gate Keeper')
     .addItem('📋 データシートを初期化する', 'setupSheet')
     .addItem('✉️ 通知テストを送信', 'sendTestNotification')
+    .addSeparator()
+    .addItem('🔑 Claude APIキーを設定', 'setClaudeApiKey')
+    .addItem('🧪 Claude API接続テスト', 'testClaudeConnection')
     .addToUi();
 }
 
@@ -64,34 +72,160 @@ function sendTestNotification() {
   SpreadsheetApp.getUi().alert(CHAIRMAN_EMAIL + ' 宛にテストメールを送信しました。');
 }
 
+function setClaudeApiKey() {
+  const ui = SpreadsheetApp.getUi();
+  const resp = ui.prompt(
+    'Claude APIキーを設定',
+    'console.anthropic.com で発行したAPIキー（sk-ant-...）を貼り付けてください。',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+  const key = resp.getResponseText().trim();
+  if (!key) { ui.alert('キーが空のため保存しませんでした。'); return; }
+  PropertiesService.getScriptProperties().setProperty('CLAUDE_API_KEY', key);
+  ui.alert('Claude APIキーを保存しました。「🧪 Claude API接続テスト」で疎通確認できます。');
+}
+
+function testClaudeConnection() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const text = callClaude_('あなたは接続テスト用の応答者です。', '「OK」とだけ返答してください。');
+    ui.alert('Claude APIに接続できました。\n\n応答: ' + text);
+  } catch (err) {
+    ui.alert('Claude APIへの接続に失敗しました。\n\n' + String(err));
+  }
+}
+
+// ==============================
+// Claude API
+// ==============================
+function callClaude_(systemPrompt, userPrompt) {
+  const apiKey = PropertiesService.getScriptProperties().getProperty('CLAUDE_API_KEY');
+  if (!apiKey) {
+    throw new Error('Claude APIキーが未設定です。スプレッドシートのメニュー「🔒 Gate Keeper」→「🔑 Claude APIキーを設定」から設定してください。');
+  }
+  const res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01'
+    },
+    payload: JSON.stringify({
+      model: CLAUDE_MODEL,
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }]
+    }),
+    muteHttpExceptions: true
+  });
+  const code = res.getResponseCode();
+  let body;
+  try {
+    body = JSON.parse(res.getContentText());
+  } catch (e) {
+    throw new Error('Claude APIの応答を解析できませんでした（HTTP ' + code + '）: ' + res.getContentText());
+  }
+  if (code !== 200) {
+    throw new Error('Claude APIエラー（HTTP ' + code + '）: ' + (body.error && body.error.message ? body.error.message : res.getContentText()));
+  }
+  return (body.content && body.content[0] && body.content[0].text) ? body.content[0].text : '';
+}
+
 function getSheet_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) throw new Error('「' + SHEET_NAME + '」シートがありません。メニューから初期化してください。');
+  ensureCaseHeaders_(sheet);
+  return sheet;
+}
+
+// 既存の案件データを消さずに、後から追加された列（aiOpinionJsonなど）を
+// ヘッダー行にだけ追加する。setupSheet()の再実行（＝全消去）をせずに済ませるための移行処理。
+function ensureCaseHeaders_(sheet) {
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const headerRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  HEADERS.forEach(function (h) {
+    if (headerRow.indexOf(h) === -1) {
+      sheet.getRange(1, sheet.getLastColumn() + 1).setValue(h);
+    }
+  });
+}
+
+function getOrCreateKnowledgeSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(KNOWLEDGE_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(KNOWLEDGE_SHEET_NAME);
+    sheet.getRange(1, 1, 1, KNOWLEDGE_HEADERS.length).setValues([KNOWLEDGE_HEADERS]).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
   return sheet;
 }
 
 // ==============================
-// 読み書き
+// 読み書き（案件データ）
 // ==============================
 function listCases_(sheet) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
-  const rows = sheet.getRange(2, 1, lastRow - 1, HEADERS.length).getValues();
+  const headerRow = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const idx = {};
+  headerRow.forEach(function (h, i) { idx[h] = i; });
+  const rows = sheet.getRange(2, 1, lastRow - 1, headerRow.length).getValues();
+  return rows
+    .filter(function (r) { return r[idx.id]; })
+    .map(function (r) {
+      return {
+        id: r[idx.id],
+        name: r[idx.name],
+        createdAt: r[idx.createdAt],
+        status: r[idx.status],
+        entry: r[idx.entryJson] ? JSON.parse(r[idx.entryJson]) : {},
+        draftDocOverride: r[idx.draftDocOverride] || '',
+        submission: r[idx.submissionJson] ? JSON.parse(r[idx.submissionJson]) : null,
+        judge: r[idx.judgeJson] ? JSON.parse(r[idx.judgeJson]) : null,
+        aiOpinion: (idx.aiOpinionJson !== undefined && r[idx.aiOpinionJson]) ? JSON.parse(r[idx.aiOpinionJson]) : null
+      };
+    });
+}
+
+// ==============================
+// 読み書き（ナレッジ）
+// ==============================
+function listKnowledge_() {
+  const sheet = getOrCreateKnowledgeSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  const rows = sheet.getRange(2, 1, lastRow - 1, KNOWLEDGE_HEADERS.length).getValues();
   return rows
     .filter(function (r) { return r[0]; })
     .map(function (r) {
-      return {
-        id: r[0],
-        name: r[1],
-        createdAt: r[2],
-        status: r[3],
-        entry: r[4] ? JSON.parse(r[4]) : {},
-        draftDocOverride: r[5] || '',
-        submission: r[6] ? JSON.parse(r[6]) : null,
-        judge: r[7] ? JSON.parse(r[7]) : null
-      };
+      return { id: r[0], filename: r[1], content: r[2], uploadedAt: r[3] };
     });
+}
+
+function listKnowledgeSummary_() {
+  return listKnowledge_().map(function (k) {
+    return { id: k.id, filename: k.filename, uploadedAt: k.uploadedAt, size: (k.content || '').length };
+  });
+}
+
+function addKnowledge_(filename, content) {
+  const sheet = getOrCreateKnowledgeSheet_();
+  const id = 'K-' + Date.now().toString(36).toUpperCase() + '-' + Math.floor(Math.random() * 900 + 100);
+  sheet.appendRow([id, filename, content, new Date().toISOString()]);
+  return id;
+}
+
+function deleteKnowledge_(id) {
+  const sheet = getOrCreateKnowledgeSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (ids[i][0] === id) { sheet.deleteRow(i + 2); return; }
+  }
 }
 
 function findRowById_(sheet, id) {
@@ -111,17 +245,20 @@ function getExistingStatus_(sheet, id) {
 }
 
 function upsertCase_(sheet, c) {
-  const row = [
-    c.id,
-    c.name || '',
-    c.createdAt || new Date().toISOString(),
-    c.status || 'draft',
-    JSON.stringify(c.entry || {}),
-    c.draftDocOverride || '',
-    c.submission ? JSON.stringify(c.submission) : '',
-    c.judge ? JSON.stringify(c.judge) : '',
-    new Date().toISOString()
-  ];
+  const headerRow = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const valueMap = {
+    id: c.id,
+    name: c.name || '',
+    createdAt: c.createdAt || new Date().toISOString(),
+    status: c.status || 'draft',
+    entryJson: JSON.stringify(c.entry || {}),
+    draftDocOverride: c.draftDocOverride || '',
+    submissionJson: c.submission ? JSON.stringify(c.submission) : '',
+    judgeJson: c.judge ? JSON.stringify(c.judge) : '',
+    updatedAt: new Date().toISOString(),
+    aiOpinionJson: c.aiOpinion ? JSON.stringify(c.aiOpinion) : ''
+  };
+  const row = headerRow.map(function (h) { return valueMap.hasOwnProperty(h) ? valueMap[h] : ''; });
   const rowIndex = findRowById_(sheet, c.id);
   if (rowIndex === -1) {
     sheet.appendRow(row);
@@ -173,6 +310,56 @@ function notifyOnTransition_(prevStatus, c) {
 }
 
 // ==============================
+// AIハット会長 一次意見
+// ==============================
+function runAiJudge_(body) {
+  const e = body.entry || {};
+  const s = body.scoring || {};
+  const flags = body.riskFlags || [];
+  const draftDoc = body.draftDoc || '';
+  const caseName = body.caseName || '無題案件';
+
+  const knowledge = listKnowledge_();
+  let systemPrompt;
+  if (knowledge.length === 0) {
+    systemPrompt = 'あなたはCHECKI株式会社の服部会長の分身として、営業案件の一次審査コメントを行うアシスタントです。' +
+      '現時点で会長の判断基準ドキュメントは登録されていません。一般的な経営視点で率直にコメントしてください。';
+  } else {
+    const docs = knowledge.map(function (k) { return '## ' + k.filename + '\n' + k.content; }).join('\n\n---\n\n');
+    systemPrompt = [
+      'あなたはCHECKI株式会社の服部会長の分身として、営業案件の一次審査コメントを行うアシスタントです。',
+      '以下は会長との壁打ちから蓄積してきた、判断基準・考え方をまとめたドキュメント群です。',
+      'これらに書かれた原則・価値観・過去の判断傾向に忠実に照らして評価してください。',
+      '',
+      docs
+    ].join('\n');
+  }
+
+  const userPrompt = [
+    '# 審査対象案件: ' + caseName,
+    '',
+    '## 数値データ（機械採点・すでに確定済み）',
+    '- 粗利率: ' + (s.margin === null || s.margin === undefined ? '—' : Number(s.margin).toFixed(1) + '%'),
+    '- 総合スコア: ' + s.total + ' / 100',
+    '- 収益性: ' + s.profitability + '/30, 自動化の質: ' + s.automation + '/35, 構造設計: ' + s.structure + '/20, 営業資産: ' + s.assets + '/15',
+    '',
+    '## 検出されたリスク',
+    flags.length ? flags.map(function (f) { return '- [' + f.level + '] ' + f.text; }).join('\n') : '(なし)',
+    '',
+    '## 案件詳細（設計書素案）',
+    draftDoc,
+    '',
+    '## 依頼',
+    '上記の判断基準ドキュメントに照らして、この案件についての会長視点での一次コメントを300〜500字程度で出力してください。',
+    '- 機械採点のスコアそのものは上書き・再計算しない',
+    '- 会長の過去の判断基準・価値観と矛盾する点、見落としがちな懸念があれば具体的に指摘する',
+    '- 断定は避けつつも率直に。最終可否の判断は会長本人が行うため、あくまで一次意見として述べる'
+  ].join('\n');
+
+  return callClaude_(systemPrompt, userPrompt);
+}
+
+// ==============================
 // HTTP エンドポイント
 // ==============================
 function jsonResponse_(obj) {
@@ -188,6 +375,9 @@ function doGet(e) {
       const sheet = getSheet_();
       return jsonResponse_({ ok: true, cases: listCases_(sheet) });
     }
+    if (params.action === 'listKnowledge') {
+      return jsonResponse_({ ok: true, items: listKnowledgeSummary_() });
+    }
     return jsonResponse_({ ok: false, error: 'unknown action' });
   } catch (err) {
     return jsonResponse_({ ok: false, error: String(err) });
@@ -195,19 +385,46 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  let body;
+  try {
+    body = JSON.parse(e.postData.contents);
+  } catch (err) {
+    return jsonResponse_({ ok: false, error: 'invalid request body' });
+  }
+  if (body.token !== API_TOKEN) return jsonResponse_({ ok: false, error: 'unauthorized' });
+
+  // aiJudgeはClaude APIへの外部通信を含み時間がかかるため、
+  // 他の同期処理をブロックしないようスクリプトロックの外で処理する。
+  if (body.action === 'aiJudge') {
+    try {
+      const text = runAiJudge_(body);
+      return jsonResponse_({ ok: true, aiComment: text, knowledgeCount: listKnowledge_().length, generatedAt: new Date().toISOString() });
+    } catch (err) {
+      return jsonResponse_({ ok: false, error: String(err) });
+    }
+  }
+
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
-    const body = JSON.parse(e.postData.contents);
-    if (body.token !== API_TOKEN) return jsonResponse_({ ok: false, error: 'unauthorized' });
-
-    const sheet = getSheet_();
     if (body.action === 'upsert') {
+      const sheet = getSheet_();
       if (!body.case || !body.case.id) return jsonResponse_({ ok: false, error: 'case.id is required' });
       const prevStatus = getExistingStatus_(sheet, body.case.id);
       upsertCase_(sheet, body.case);
       notifyOnTransition_(prevStatus, body.case);
       return jsonResponse_({ ok: true, cases: listCases_(sheet) });
+    }
+    if (body.action === 'uploadKnowledge') {
+      if (!body.filename || !body.content) return jsonResponse_({ ok: false, error: 'filename/content is required' });
+      if (String(body.content).length > 200000) return jsonResponse_({ ok: false, error: 'ファイルが大きすぎます（20万文字が上限です）' });
+      const id = addKnowledge_(body.filename, body.content);
+      return jsonResponse_({ ok: true, id: id, items: listKnowledgeSummary_() });
+    }
+    if (body.action === 'deleteKnowledge') {
+      if (!body.id) return jsonResponse_({ ok: false, error: 'id is required' });
+      deleteKnowledge_(body.id);
+      return jsonResponse_({ ok: true, items: listKnowledgeSummary_() });
     }
     return jsonResponse_({ ok: false, error: 'unknown action' });
   } catch (err) {
